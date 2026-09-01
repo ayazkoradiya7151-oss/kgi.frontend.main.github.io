@@ -624,7 +624,7 @@ img.media-img.loaded{display:block;}
 <header class="site-header">
   <div class="wrap nav-inner">
     <a href="#home" class="brand" aria-label="Koradiya Group IMPEX — Home">
-      <span class="brand-mark"><img src="assets/logo/logo.png" alt="KGI Tiles — Italian Surface — Koradiya Group IMPEX logo"></span>
+      <span class="brand-mark"><img data-media="logo" src="assets/logo/logo.png" alt="KGI Tiles — Italian Surface — Koradiya Group IMPEX logo"></span>
     </a>
     <nav class="nav" id="mainNav">
       <div class="nav-item active"><a href="#home">Home</a></div>
@@ -1586,7 +1586,7 @@ img.media-img.loaded{display:block;}
     <div class="footer-grid">
       <div class="footer-brand">
         <a href="#home" class="brand" aria-label="Koradiya Group IMPEX — Home">
-          <span class="brand-mark"><img src="assets/logo/logo.png" alt="Koradiya Group IMPEX logo"></span>
+          <span class="brand-mark"><img data-media="logo" src="assets/logo/logo.png" alt="Koradiya Group IMPEX logo"></span>
         </a>
         <p>KGI / Koradiya Group IMPEX is a Morbi, Gujarat, India manufacturer and exporter of glazed porcelain slabs, glazed porcelain tiles and ceramic tiles, built on quality, consistency and reliable service for domestic and global partners.</p>
         <p class="footer-address">Survey No. 5577,<br>Opposite Gadhani Rang, Halvad, Morbi<br>Gujarat &ndash; 363330, India</p>
@@ -1878,29 +1878,40 @@ window.SITE_MEDIA = {
   function heroSlider(){
     const hero = document.querySelector('.hero');
     if (!hero) return;
-    const M = window.SITE_MEDIA || {};
     const slidesEl = document.getElementById('heroSlides');
-    const imgs = (M.heroSlides && M.heroSlides.length) ? M.heroSlides : [];
-    if (slidesEl){
-      imgs.forEach((src, i) => {
-        const d = document.createElement('div');
-        d.className = 'hero-slide' + (i === 0 ? ' active' : '');
-        d.style.backgroundImage = `url('${src}')`;
-        slidesEl.appendChild(d);
-      });
-      if (!imgs.length){
-        const fb = document.createElement('div');
-        fb.className = 'hero-fallback';
-        slidesEl.appendChild(fb);
-      }
-    }
     const headlines = hero.querySelectorAll('.hl');
     const dots = document.querySelectorAll('.hero-dots button');
     const styleLabel = document.getElementById('heroStyleText');
-    const styles = (M.heroStyles && M.heroStyles.length) ? M.heroStyles : [];
+    let imgs = [];
+    let styles = [];
     let cur = 0;
     let timer = null;
-    const total = Math.max(headlines.length, imgs.length, dots.length, 1);
+    let total = Math.max(headlines.length, dots.length, 1);
+
+    function buildSlides(){
+      const M = window.SITE_MEDIA || {};
+      imgs = (M.heroSlides && M.heroSlides.length) ? M.heroSlides : [];
+      styles = (M.heroStyles && M.heroStyles.length) ? M.heroStyles : [];
+      if (slidesEl){
+        slidesEl.innerHTML = '';
+        imgs.forEach((src, i) => {
+          const d = document.createElement('div');
+          d.className = 'hero-slide' + (i === 0 ? ' active' : '');
+          d.style.backgroundImage = `url('${src}')`;
+          slidesEl.appendChild(d);
+        });
+        if (!imgs.length){
+          const fb = document.createElement('div');
+          fb.className = 'hero-fallback';
+          slidesEl.appendChild(fb);
+        }
+      }
+      total = Math.max(headlines.length, imgs.length, dots.length, 1);
+      cur = 0;
+      go(0);
+      restart();
+    }
+
     function go(i){
       cur = (i + total) % total;
       headlines.forEach((h,idx) => h.classList.toggle('active', idx === (cur % headlines.length)));
@@ -1916,7 +1927,9 @@ window.SITE_MEDIA = {
     }
     function restart(){ if (timer) clearInterval(timer); if (total > 1) timer = setInterval(() => go(cur+1), 5200); }
     dots.forEach((d,i) => d.addEventListener('click', () => { go(i); restart(); }));
-    restart();
+    buildSlides();
+    // Exposed so rebindMedia() can rebuild the hero once real data arrives from Supabase
+    window.__rebuildHeroSlides = buildSlides;
 
     /* subtle mouse-parallax 3D depth on the hero image */
     if (window.matchMedia('(hover:hover)').matches){
@@ -2132,8 +2145,8 @@ window.SITE_MEDIA = {
       if (!data.name || !data.email || !data.message) { if (status) status.textContent = 'Please complete your name, email and message.'; return; }
       if (status) status.textContent = 'Sending your enquiry…';
       try {
-        if (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url && window.SUPABASE_CONFIG.anonKey && typeof sb !== 'undefined') {
-          const result = await sb.from('enquiries').insert({name:data.name, phone:data.phone || '', email:data.email, message:data.message});
+        if (window.SUPABASE_CONFIG && window.SUPABASE_CONFIG.url && window.SUPABASE_CONFIG.anonKey && window.sb) {
+          const result = await window.sb.from('enquiries').insert({name:data.name, phone:data.phone || '', email:data.email, message:data.message});
           if (result && result.error) throw result.error;
           if (status) status.textContent = 'Thank you — your enquiry has been sent to the KGI team.';
           form.reset();
@@ -2227,6 +2240,7 @@ window.SITE_MEDIA = {
   if (typeof window.supabase === "undefined") return;
 
   var sb = window.supabase.createClient(cfg.url, cfg.anonKey);
+  window.sb = sb; // expose globally — contactForm() in an earlier script block needs this
 
   document.addEventListener("DOMContentLoaded", function(){
     loadContent();
@@ -2296,6 +2310,9 @@ window.SITE_MEDIA = {
         a.href = brochurePath; a.setAttribute('download',''); a.target = "_blank";
       });
     }
+    // Hero slides are built as raw DOM nodes (not [data-media] elements), so
+    // they need an explicit rebuild once real Supabase data comes in.
+    if (typeof window.__rebuildHeroSlides === "function") window.__rebuildHeroSlides();
   }
 
   /* ---------- products: dynamic grid with up to 5 images each ---------- */
